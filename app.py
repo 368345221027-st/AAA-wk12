@@ -20,12 +20,10 @@ HISTORY_PATH = BASE_DIR / "predictions.csv"
 CUSTOMER_COLS = ["id", "ชื่อ-นามสกุล", "เพศ", "อายุ", "เบอร์โทร", "ที่อยู่", "บันทึกเมื่อ"]
 HISTORY_COLS = [
     "id", "เวลา", "ผู้บันทึก", "ลูกค้า",
-    "อายุ", "ยอดเงินคงเหลือ", "ระยะเวลาโทร(วิ)", "จำนวนติดต่อแคมเปญนี้", "จำนวนติดต่อก่อนหน้า",
-    "ผิดนัดชำระ", "สินเชื่อบ้าน", "สินเชื่อส่วนบุคคล",
+    "ระยะเวลาโทร(วิ)", "วันตั้งแต่ติดต่อครั้งก่อน(pdays)",
     "ผลทำนาย", "ความน่าจะเป็น(%)",
 ]
 
-# demo login: บัญชีสาธิตของกลุ่ม (ใช้สำหรับนำเสนอ ไม่ใช่ระบบความปลอดภัยจริง)
 USERS = {
     "admin": {"password": "1234", "display": "ผู้ดูแลระบบ"},
     "member": {"password": "1234", "display": "สมาชิกกลุ่ม"},
@@ -39,9 +37,6 @@ PAGE_ABOUT = "ℹ️ เกี่ยวกับระบบ"
 
 st.set_page_config(page_title=f"{APP_NAME} | {APP_SUBTITLE}", page_icon="📡", layout="wide")
 
-# ---------------------------------------------------------------
-# สไตล์ (CSS)
-# ---------------------------------------------------------------
 st.markdown(
     """
 <style>
@@ -50,11 +45,9 @@ html, body, [class*="css"], .stApp { font-family: 'Prompt', sans-serif; }
 #MainMenu, footer { visibility: hidden; }
 .block-container { padding-top: 1.5rem; max-width: 1100px; }
 
-.hero {
-    background: linear-gradient(135deg, #0f766e 0%, #0e7490 50%, #4338ca 100%);
+.hero { background: linear-gradient(135deg, #0f766e 0%, #0e7490 50%, #4338ca 100%);
     border-radius: 22px; padding: 30px 32px; color: #fff; margin-bottom: 22px;
-    box-shadow: 0 10px 30px rgba(15, 118, 110, .25);
-}
+    box-shadow: 0 10px 30px rgba(15, 118, 110, .25); }
 .hero .badge { display: inline-block; background: rgba(255,255,255,.18); padding: 4px 14px;
     border-radius: 999px; font-size: 13px; margin-bottom: 10px; letter-spacing: .5px; }
 .hero h1 { margin: 0; font-size: 2.1rem; font-weight: 700; color: #fff; padding: 0; }
@@ -96,18 +89,18 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label:hover { background
 )
 
 
-# ---------------------------------------------------------------
-# โมเดล
-# ---------------------------------------------------------------
 @st.cache_resource
 def load_model():
     return joblib.load(MODEL_PATH)
 
 
 # ช่วง min/max ที่ใช้ทำ Min-Max scaling ตอนเทรน (โมเดลเรียนจากข้อมูลสเกล 0-1)
+# duration: ยืนยันแล้วจากข้อมูลจริงในสมุดโน้ต (ตรงกับค่าดั้งเดิมของชุดข้อมูลพอดี)
+# pdays: ค่าต่ำสุด -1 หมายถึง "ยังไม่เคยถูกติดต่อมาก่อน" ค่าสูงสุดอ้างอิงจากชุดข้อมูล
+#        Bank Marketing (11,162 แถว) มาตรฐาน — ควรตรวจสอบกับ df["pdays"].max() ก่อน scale จริงอีกครั้ง
 RANGES = {
-    "age": (18, 95), "balance": (-6847, 81204), "duration": (2, 3881),
-    "campaign": (1, 63), "previous": (0, 58),
+    "duration": (2, 3881),
+    "pdays": (-1, 854),
 }
 
 
@@ -116,9 +109,6 @@ def minmax(name: str, value: float) -> float:
     return (value - lo) / (hi - lo)
 
 
-# ---------------------------------------------------------------
-# ไฟล์ข้อมูล (CSV) — ลูกค้า และ ประวัติการทำนาย
-# ---------------------------------------------------------------
 def _load(path: Path, cols: list[str]) -> pd.DataFrame:
     if path.exists():
         return pd.read_csv(path, dtype=str, encoding="utf-8-sig").fillna("")
@@ -159,15 +149,10 @@ def valid_phone(phone: str) -> bool:
     return bool(re.fullmatch(r"0\d{8,9}", digits))
 
 
-# ---------------------------------------------------------------
-# ระบบเข้าสู่ระบบ (สาธิต — เก็บสถานะไว้ใน session เท่านั้น)
-# ---------------------------------------------------------------
 def login_screen() -> None:
     st.markdown(
-        f"""
-<div class="brand"><div class="logo">📡</div>
-<div class="name">{APP_NAME}</div><div class="sub">{APP_SUBTITLE}</div></div>
-""",
+        f'<div class="brand"><div class="logo">📡</div><div class="name">{APP_NAME}</div>'
+        f'<div class="sub">{APP_SUBTITLE}</div></div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
@@ -188,9 +173,6 @@ def login_screen() -> None:
             st.error("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
 
 
-# ---------------------------------------------------------------
-# ส่วนประกอบซ้ำ
-# ---------------------------------------------------------------
 def hero(badge: str, title: str, subtitle: str) -> None:
     st.markdown(
         f'<div class="hero"><div class="badge">{badge}</div><h1>{title}</h1><p>{subtitle}</p></div>',
@@ -211,9 +193,6 @@ def stat_box(col, n, label):
         st.markdown(f'<div class="stat-box"><div class="n">{n}</div><div class="t">{label}</div></div>', unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------
-# หน้า: แดชบอร์ด
-# ---------------------------------------------------------------
 def page_dashboard() -> None:
     hero("📊 Overview", "แดชบอร์ดสรุปภาพรวม", "สรุปข้อมูลลูกค้าและผลการทำนายทั้งหมดในระบบ")
 
@@ -237,13 +216,11 @@ def page_dashboard() -> None:
                 st.markdown('<div class="section-title">📈 จำนวนการทำนายรายวัน</div>', unsafe_allow_html=True)
                 daily = hist.copy()
                 daily["วันที่"] = pd.to_datetime(daily["เวลา"]).dt.date
-                counts = daily.groupby("วันที่").size()
-                st.bar_chart(counts)
+                st.bar_chart(daily.groupby("วันที่").size())
         with right:
             with st.container(border=True):
                 st.markdown('<div class="section-title">🥧 สัดส่วนผลทำนาย</div>', unsafe_allow_html=True)
-                dist = hist["ผลทำนาย"].value_counts()
-                st.bar_chart(dist)
+                st.bar_chart(hist["ผลทำนาย"].value_counts())
 
         with st.container(border=True):
             st.markdown('<div class="section-title">🕘 การทำนายล่าสุด</div>', unsafe_allow_html=True)
@@ -252,9 +229,6 @@ def page_dashboard() -> None:
     footer()
 
 
-# ---------------------------------------------------------------
-# หน้า: ทำนายโอกาส
-# ---------------------------------------------------------------
 def page_predict() -> None:
     try:
         model = load_model()
@@ -262,54 +236,28 @@ def page_predict() -> None:
         st.error(f"ไม่พบไฟล์โมเดล: {MODEL_PATH}\n\nให้วาง bank_tree.joblib ไว้โฟลเดอร์เดียวกับ app.py")
         st.stop()
 
-    hero("📡 AI · Binary Classification · Decision Tree", "ทำนายโอกาสเปิดบัญชี", APP_SUBTITLE)
+    hero("📡 AI · Binary Classification · Decision Tree (2 ฟีเจอร์)", "ทำนายโอกาสเปิดบัญชี", APP_SUBTITLE)
 
     customers = load_customers()
-    NONE_OPT = "— ไม่ระบุลูกค้า (กรอกเอง) —"
+    NONE_OPT = "— ไม่ระบุลูกค้า —"
     options = [NONE_OPT] + [f"{r['id']} · {r['ชื่อ-นามสกุล']}" for _, r in customers.iterrows()]
-    st.session_state.setdefault("age", 40)
-
-    def fill_from_customer():
-        sel = st.session_state.get("pick_customer", NONE_OPT)
-        if sel != NONE_OPT:
-            row = customers[customers["id"] == sel.split(" · ")[0]]
-            if len(row) and str(row.iloc[0]["อายุ"]).isdigit():
-                st.session_state["age"] = min(max(int(row.iloc[0]["อายุ"]), 18), 95)
 
     with st.container(border=True):
-        st.markdown('<div class="section-title">👤 ข้อมูลลูกค้า</div>', unsafe_allow_html=True)
-        picked = st.selectbox("เลือกจากลูกค้าที่บันทึกไว้ (ไม่บังคับ)", options, key="pick_customer", on_change=fill_from_customer)
-        c1, c2 = st.columns(2)
-        with c1:
-            age = st.slider("อายุ (ปี)", 18, 95, key="age")
-        with c2:
-            balance = st.number_input("ยอดเงินคงเหลือในบัญชี (balance)", -6847, 81204, 1000, step=100)
-        c3, c4, c5 = st.columns(3)
-        with c3:
-            default = st.radio("มีหนี้ผิดนัดชำระ", ["ไม่มี", "มี"], horizontal=True)
-        with c4:
-            housing = st.radio("มีสินเชื่อบ้าน", ["ไม่มี", "มี"], horizontal=True)
-        with c5:
-            loan = st.radio("มีสินเชื่อส่วนบุคคล", ["ไม่มี", "มี"], horizontal=True)
+        st.markdown('<div class="section-title">📞 ข้อมูลการติดต่อ</div>', unsafe_allow_html=True)
+        picked = st.selectbox("ลูกค้า (ไม่บังคับ — เลือกเพื่อให้ขึ้นชื่อในผลทำนาย/ประวัติ)", options)
 
-    with st.container(border=True):
-        st.markdown('<div class="section-title">📞 ประวัติการติดต่อ</div>', unsafe_allow_html=True)
-        d1, d2 = st.columns(2)
-        with d1:
-            duration = st.slider("ระยะเวลาโทรคุยครั้งล่าสุด (วินาที)", 2, 3881, 300, step=10)
-            st.caption(f"≈ {duration // 60} นาที {duration % 60} วินาที")
-        with d2:
-            campaign = st.slider("จำนวนครั้งที่ติดต่อในแคมเปญนี้", 1, 63, 2)
-        previous = st.slider("จำนวนครั้งที่เคยติดต่อก่อนแคมเปญนี้", 0, 58, 0)
+        duration = st.slider("ระยะเวลาโทรคุยครั้งล่าสุด (วินาที)", 2, 3881, 300, step=10)
+        st.caption(f"≈ {duration // 60} นาที {duration % 60} วินาที")
+
+        never_contacted = st.checkbox("ลูกค้ารายนี้ยังไม่เคยถูกติดต่อจากแคมเปญก่อนหน้าเลย", value=True)
+        if never_contacted:
+            pdays = -1
+            st.caption("pdays = -1 (ยังไม่เคยติดต่อ)")
+        else:
+            pdays = st.slider("จำนวนวันตั้งแต่ถูกติดต่อครั้งก่อนหน้า (pdays)", 0, 854, 30)
 
     if st.button("🔍 ทำนายโอกาส", type="primary"):
-        row = {
-            "age": minmax("age", age), "balance": minmax("balance", balance),
-            "duration": minmax("duration", duration), "campaign": minmax("campaign", campaign),
-            "previous": minmax("previous", previous),
-            "default": 1 if default == "มี" else 0, "housing": 1 if housing == "มี" else 0,
-            "loan": 1 if loan == "มี" else 0,
-        }
+        row = {"duration": minmax("duration", duration), "pdays": minmax("pdays", pdays)}
         X = pd.DataFrame([row])[list(model.feature_names_in_)]
         pred = int(model.predict(X)[0])
         p_yes = float(model.predict_proba(X)[0][list(model.classes_).index(1)])
@@ -334,14 +282,8 @@ def page_predict() -> None:
         add_history({
             "ผู้บันทึก": st.session_state["auth_user"]["display"],
             "ลูกค้า": cust_name,
-            "อายุ": age,
-            "ยอดเงินคงเหลือ": balance,
             "ระยะเวลาโทร(วิ)": duration,
-            "จำนวนติดต่อแคมเปญนี้": campaign,
-            "จำนวนติดต่อก่อนหน้า": previous,
-            "ผิดนัดชำระ": default,
-            "สินเชื่อบ้าน": housing,
-            "สินเชื่อส่วนบุคคล": loan,
+            "วันตั้งแต่ติดต่อครั้งก่อน(pdays)": pdays,
             "ผลทำนาย": verdict_plain,
             "ความน่าจะเป็น(%)": f"{p_yes * 100:.1f}",
         })
@@ -353,9 +295,6 @@ def page_predict() -> None:
     footer()
 
 
-# ---------------------------------------------------------------
-# หน้า: ข้อมูลลูกค้า
-# ---------------------------------------------------------------
 def page_customer() -> None:
     hero("🗂️ Customer Records", "ข้อมูลลูกค้า", "บันทึกและจัดการรายชื่อลูกค้าของแคมเปญ")
 
@@ -427,9 +366,6 @@ def page_customer() -> None:
     footer()
 
 
-# ---------------------------------------------------------------
-# หน้า: ประวัติการทำนาย
-# ---------------------------------------------------------------
 def page_history() -> None:
     hero("🕘 Prediction Log", "ประวัติการทำนาย", "ทุกครั้งที่กดทำนาย ระบบจะบันทึกผลไว้ที่นี่โดยอัตโนมัติ")
 
@@ -461,9 +397,6 @@ def page_history() -> None:
     footer()
 
 
-# ---------------------------------------------------------------
-# หน้า: เกี่ยวกับระบบ
-# ---------------------------------------------------------------
 def page_about() -> None:
     hero("ℹ️ About", "เกี่ยวกับระบบ", "รายละเอียดโครงการและโมเดลที่ใช้")
 
@@ -476,9 +409,9 @@ def page_about() -> None:
         )
     with st.container(border=True):
         st.markdown("#### 🧠 โมเดลที่ใช้")
-        st.write("Decision Tree Classifier · ทำนายผลลัพธ์ 2 กลุ่ม (Binary Classification): เปิดบัญชี / ไม่เปิดบัญชี")
-        st.write("ฟีเจอร์ที่ใช้: อายุ, ยอดเงินคงเหลือ, ระยะเวลาโทร, จำนวนครั้งที่ติดต่อในแคมเปญนี้, "
-                 "จำนวนครั้งที่ติดต่อก่อนหน้า, ประวัติผิดนัดชำระ, สินเชื่อบ้าน, สินเชื่อส่วนบุคคล")
+        st.write("Decision Tree Classifier (max_depth=3) · Binary Classification: เปิดบัญชี / ไม่เปิดบัญชี")
+        st.write("ฟีเจอร์ที่ใช้ (2 ตัว): ระยะเวลาโทร (duration), จำนวนวันตั้งแต่ถูกติดต่อครั้งก่อนหน้า (pdays)")
+        st.write("Accuracy บนชุดทดสอบ: **75.77%**")
         st.markdown(f"ชุดข้อมูลต้นฉบับ: [Bank Marketing Dataset]({DATASET_URL})")
     with st.container(border=True):
         st.markdown("#### 👥 สมาชิกกลุ่ม")
@@ -488,9 +421,6 @@ def page_about() -> None:
     footer()
 
 
-# ---------------------------------------------------------------
-# main
-# ---------------------------------------------------------------
 def main():
     if "auth_user" not in st.session_state:
         login_screen()
